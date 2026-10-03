@@ -52,3 +52,39 @@ class HGNN(nn.Module):
         for layer in self.layers:
             x = torch.relu(p @ layer(x))
         return self.head(x.mean(0))
+
+
+# ==============================================================================
+
+def draw(edges, kind):
+    permutation = list(range(N))
+    random.shuffle(permutation)
+    H = incidence(N, relabel(edges, permutation))
+    return features(H, kind), propagation(H)
+
+
+def experiment(kind, steps=400, n_test=200):
+    model = HGNN(features(incidence(N, A), kind).shape[1])
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)
+    criterion = nn.CrossEntropyLoss()
+
+    for _ in range(steps):
+        loss = 0.0
+        for label, edges in ((0, A), (1, B)):
+            x, p = draw(edges, kind)
+            loss = loss + criterion(model(x, p).unsqueeze(0), torch.tensor([label]))
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    correct = 0
+    with torch.no_grad():
+        for _ in range(n_test):
+            for label, edges in ((0, A), (1, B)):
+                x, p = draw(edges, kind)
+                correct += int(model(x, p).argmax().item() == label)
+    return correct / (2 * n_test)
+
+
+for kind in ("ones", "degree", "higher"):
+    print(f"{kind:>7}: test accuracy {experiment(kind):.3f}")
